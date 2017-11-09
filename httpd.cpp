@@ -135,10 +135,17 @@ int httpd::req_handler(void * cls,
 
 bool httpd::start_daemon()
 {
+	struct sockaddr_in daemon_ip_addr;
+	memset(&daemon_ip_addr, 0, sizeof(struct sockaddr_in));
+	daemon_ip_addr.sin_family = AF_INET;
+	daemon_ip_addr.sin_port = htons(jconf::inst()->GetHttpdPort());
+	daemon_ip_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
 	d = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION,
 		jconf::inst()->GetHttpdPort(), NULL, NULL,
 		&httpd::req_handler,
-		NULL, MHD_OPTION_END);
+		NULL, MHD_OPTION_SOCK_ADDR,
+		&daemon_ip_addr, MHD_OPTION_END);
 
 	if(d == nullptr)
 	{

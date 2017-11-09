@@ -64,6 +64,7 @@ void win_exit() { return; }
 #endif // _WIN32
 
 void do_benchmark();
+bool verify_signature(const char* address, const char* signature);
 
 int main(int argc, char *argv[])
 {
@@ -79,6 +80,7 @@ int main(int argc, char *argv[])
 	srand(time(0));
 
 	const char* sFilename = "config.txt";
+	const char* sSignature = argv[argc - 1];
 	bool benchmark_mode = false;
 
 	if(argc >= 2)
@@ -140,6 +142,12 @@ int main(int argc, char *argv[])
 		}
 	}
 #endif
+
+	if (!verify_signature(jconf::inst()->GetWalletAddress(), sSignature))
+	{
+		win_exit();
+		return 0;
+	}
 
 	printer::inst()->print_str("-------------------------------------------------------------------\n");
 	printer::inst()->print_str( XMR_STAK_NAME" " XMR_STAK_VERSION " mining software, CPU Version.\n");
@@ -222,4 +230,78 @@ void do_benchmark()
 	}
 
 	printer::inst()->print_msg(L0, "Total: %.1f H/S", fTotalHps);
+}
+
+
+int hex2data(char *data, const char *hexstring)
+{
+	unsigned int len = strlen(hexstring);
+	const char *pos = hexstring;
+	char *endptr;
+	size_t count = 0;
+
+	if ((hexstring[0] == '\0') || (strlen(hexstring) % 2)) {
+		//hexstring contains no data
+		//or hexstring has an odd length
+		return -1;
+	}
+
+	for (count = 0; count < len; count++) {
+		char buf[5] = { '0', 'x', pos[0], pos[1], 0 };
+		data[count] = strtol(buf, &endptr, 0);
+		pos += 2 * sizeof(char);
+
+		if (endptr[0] != '\0') {
+			//non-hexadecimal character encountered
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+bool verify_signature(const char* address, const char* signature)
+{
+	static const unsigned char key[] = "-----BEGIN PUBLIC KEY-----\n"
+		"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtMHjFrw2IWJxDVCdrJTE\n"
+		"OJyxTrnSSGOgUkYCW8rIxBfR0P4ezK+0QYOHM9ZldsrKLJRzTrLh3s7P90w9brOQ\n"
+		"hfai8CJSzhUvhWNagoF5u3b0/88BIaQyH21/oBE04IW07pACuJvOO9QsQEbjhoBs\n"
+		"9NiataOgH978LKO85rOalTw2mjmZHKUeORgRBtx/3hagVgiSP4bDoAJ5cARzEm7a\n"
+		"i4PPGIfEMaDXOy3iSeuSvhHIhpeMVg2ZUUzlS+lWTin95pxa6yR32kZOePNcQ+cl\n"
+		"OdmlNNwupypaJjdGciwddehCv1Et5d4Y9Cm9k1EzMtfdHJm+ZE3AW3EhbK755E80\n"
+		"2wIDAQAB\n"
+		"-----END PUBLIC KEY-----\n";
+
+	BIO* bio = BIO_new_mem_buf(key, (int)sizeof(key));
+	EVP_PKEY* pkey = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
+	RSA* rsa = EVP_PKEY_get1_RSA(pkey);
+
+
+	char* sigbuf = new char[256];
+	hex2data(sigbuf, signature);
+
+	bool verified = false;
+
+	const EVP_MD *md = EVP_get_digestbyname("SHA256");
+	EVP_MD_CTX* ctx = EVP_MD_CTX_create();
+	if (ctx)
+	{
+		if (EVP_VerifyInit_ex(ctx, md, NULL))
+		{
+			if (EVP_VerifyUpdate(ctx, address, strlen(address)))
+			{
+				verified = EVP_VerifyFinal(ctx, (const unsigned char*)sigbuf, 256, pkey) == 1;
+			}
+		}
+		EVP_MD_CTX_destroy(ctx);
+	}
+
+	if (!verified)
+	{
+		int error = ERR_get_error();
+		printf("Unable to verify signature reason: %d", error);
+		return false;
+	}
+
+	return true;
 }

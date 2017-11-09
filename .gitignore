@@ -13,3 +13,4 @@ config-debug.txt
 
 # merge original backup files
 *.orig
+/.vs
